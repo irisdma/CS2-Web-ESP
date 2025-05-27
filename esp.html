@@ -1,0 +1,237 @@
+templates/esp.html
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Iris CS2 External ESP</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: black;
+      font-family: sans-serif;
+      color: white;
+    }
+
+    canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 0;
+    }
+
+    #menu {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      background: rgba(0,0,0,0.75);
+      padding: 14px 18px;
+      border-radius: 10px;
+      color: white;
+      z-index: 1;
+    }
+
+    #menu label {
+      display: block;
+      margin-bottom: 8px;
+    }
+
+    body.light {
+      background: white;
+      color: black;
+    }
+
+    body.light #menu {
+      background: rgba(255,255,255,0.85);
+      color: black;
+    }
+  </style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+
+<div id="menu">
+  <label><input type="checkbox" id="toggleBox" checked> Box ESP</label>
+  <label><input type="checkbox" id="toggleHPBar" checked> Health Bar</label>
+  <label><input type="checkbox" id="toggleHPNum" checked> Show HP</label>
+  <label><input type="checkbox" id="toggleTeam" checked> Show Team</label>
+  <label><input type="checkbox" id="toggleEnemiesOnly"> Enemies Only</label>
+  <label><input type="checkbox" id="toggleCrosshair" checked> Show Crosshair</label>
+  <label><input type="checkbox" id="toggleRGB"> RGB Mode</label>
+
+  <label>Box Style:
+    <select id="boxStyle">
+      <option value="full">Full Box</option>
+      <option value="corner">Corner Box</option>
+      <option value="filled">Filled Box</option>
+    </select>
+  </label>
+
+  <hr>
+  <label>ESP Color</label>
+  <input type="color" id="boxColor" value="#00ff00">
+
+  <hr>
+  <label>Font Size: <span id="fontSizeDisplay">14</span>px</label>
+  <input type="range" id="fontSlider" min="8" max="28" value="14">
+  <label><input type="checkbox" id="toggleTheme"> Light Mode</label>
+</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+let espData = [];
+
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+resize();
+window.onresize = resize;
+
+const toggleBox = document.getElementById('toggleBox');
+const toggleHPBar = document.getElementById('toggleHPBar');
+const toggleHPNum = document.getElementById('toggleHPNum');
+const toggleTeam = document.getElementById('toggleTeam');
+const toggleEnemiesOnly = document.getElementById('toggleEnemiesOnly');
+const toggleCrosshair = document.getElementById('toggleCrosshair');
+const toggleRGB = document.getElementById('toggleRGB');
+const toggleTheme = document.getElementById('toggleTheme');
+const fontSlider = document.getElementById('fontSlider');
+const fontDisplay = document.getElementById('fontSizeDisplay');
+const boxStyle = document.getElementById('boxStyle');
+const boxColor = document.getElementById('boxColor');
+
+let fontSize = 14;
+fontSlider.oninput = () => {
+  fontSize = parseInt(fontSlider.value);
+  fontDisplay.innerText = fontSize;
+};
+
+toggleTheme.oninput = () => {
+  document.body.classList.toggle("light", toggleTheme.checked);
+};
+
+let hueBase = 0;
+function getRGBColor(offset = 0) {
+  const hue = (hueBase + offset) % 360;
+  return `hsl(${hue}, 100%, 50%)`;
+}
+
+async function fetchESP() {
+  try {
+    const res = await fetch('/esp');
+    espData = await res.json();
+  } catch {
+    espData = [];
+  }
+}
+
+function drawCornerBox(x, y, w, h, color) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  const l = w * 0.3;
+  const t = h * 0.3;
+
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(x + l, y);
+  ctx.moveTo(x, y);
+  ctx.lineTo(x, y + t);
+  ctx.moveTo(x + w, y);
+  ctx.lineTo(x + w - l, y);
+  ctx.moveTo(x + w, y);
+  ctx.lineTo(x + w, y + t);
+  ctx.moveTo(x, y + h);
+  ctx.lineTo(x + l, y + h);
+  ctx.moveTo(x, y + h);
+  ctx.lineTo(x, y + h - t);
+  ctx.moveTo(x + w, y + h);
+  ctx.lineTo(x + w - l, y + h);
+  ctx.moveTo(x + w, y + h);
+  ctx.lineTo(x + w, y + h - t);
+  ctx.stroke();
+}
+
+function drawCrosshair() {
+  const cx = canvas.width / 2;
+  const cy = canvas.height / 2;
+  const size = 6;
+
+  ctx.strokeStyle = "white";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(cx - size, cy);
+  ctx.lineTo(cx + size, cy);
+  ctx.moveTo(cx, cy - size);
+  ctx.lineTo(cx, cy + size);
+  ctx.stroke();
+}
+
+function drawESP() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.font = `${fontSize}px Arial`;
+
+  if (toggleCrosshair.checked) drawCrosshair();
+
+  espData.forEach((ent, i) => {
+    const height = ent.y2 - ent.y;
+    const width = height / 2;
+    const x = ent.x - width / 2;
+    const y = ent.y;
+
+    if (toggleEnemiesOnly.checked && ent.team === 3) return;
+
+    const drawColor = toggleRGB.checked
+      ? getRGBColor(i * 15)
+      : boxColor.value;
+
+    if (toggleBox.checked) {
+      switch (boxStyle.value) {
+        case "full":
+          ctx.strokeStyle = drawColor;
+          ctx.lineWidth = 2;
+          ctx.strokeRect(x, y, width, height);
+          break;
+        case "corner":
+          drawCornerBox(x, y, width, height, drawColor);
+          break;
+        case "filled":
+          ctx.fillStyle = drawColor;
+          ctx.globalAlpha = 0.2;
+          ctx.fillRect(x, y, width, height);
+          ctx.globalAlpha = 1.0;
+          break;
+      }
+    }
+
+    if (toggleHPBar.checked) {
+      const hpWidth = width * (ent.health / 100);
+      ctx.fillStyle = "lime";
+      ctx.fillRect(x, y - 8, hpWidth, 4);
+    }
+
+    if (toggleHPNum.checked) {
+      ctx.fillStyle = "white";
+      ctx.fillText(`HP: ${ent.health}`, ent.cx - width / 2, ent.y - 12);
+    }
+
+    if (toggleTeam.checked) {
+      ctx.fillStyle = "white";
+      ctx.fillText(`Team: ${ent.team}`, ent.cx - width / 2, ent.y - 26);
+    }
+  });
+
+  hueBase = (hueBase + 3) % 360;
+}
+
+async function loop() {
+  await fetchESP();
+  drawESP();
+  requestAnimationFrame(loop);
+}
+
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
